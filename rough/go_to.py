@@ -309,10 +309,20 @@ class PrismaticJoint():
                 GPIO.cleanup()
                 print("GPIO cleanup complete.")
 
-    def go_to(self, height_percent):
-        # 05 is the highest point, 100% is the lowest point
+    def top(self):
+        self.__up(40, 2)
 
+    def middle(self):
+        self.top()
+        p_control(int(0.5 * self.rail_count))
 
+    def bottom(self):
+        self.__down(40, 2)
+
+    def halt(self, duration=3):
+        self.__up(0)
+        self.__down(0)
+        sleep(duration)
 
     def __up(self, dc, duration):
         self.up_handler.ChangeDutyCycle(dc)
@@ -326,15 +336,16 @@ class PrismaticJoint():
 
     def __measure_rail_pulse_count(self):
         initial_count_A, initial_count_B = self.count_A, self.count_B
-        self.up(80, 2)
+        self.__up(80, 2)
         final_count_A, final_count_B = self.count_A, self.count_B
 
         retries = 0
         if not isclose(final_count_A, final_count_B, 10):
             if retries < 2:
                 self.__measure_rail_pulse_count()
+                retries += 1
             else:
-                raise(Exception, 'rail measurement failed.')
+                raise(Exception, 'rail measurement failing.')
 
         self.rail_count  = final_count_A
         self.current_pos = 0
@@ -350,8 +361,6 @@ class PrismaticJoint():
             
             error = target_pos - self.count_A        
             print(f'error: {error}, encoder_count: {self.count_A}')
-
-
 
 class Manipulator():
     @staticmethod
