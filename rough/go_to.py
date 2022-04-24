@@ -1,6 +1,7 @@
 # ####### RACK POSITIONER ############
 import RPi.GPIO as GPIO          
 from time import sleep
+from math import isclose
 
 # GPIO.setmode(GPIO.BCM)
 
@@ -197,8 +198,9 @@ pwm.set_mode(base, pigpio.OUTPUT)
 pwm.set_mode(elbow, pigpio.OUTPUT)
 
 class Revolute():
-    ABSOLUTE_MIN_DC = 501
-    ABSOLUTE_MAX_DC = 2499
+    # signal bounds to avoid damaging HW
+    ABSOLUTE_MIN_DC = 500
+    ABSOLUTE_MAX_DC = 2500
 
     @classmethod
     def converted_dc(cls, angle):
@@ -210,6 +212,9 @@ class Revolute():
         dc = slope*(max(angle, cls.MIN_ANGLE)) + cls.MIN_ANGLE_DC
         
         return round(min(max(dc, cls.ABSOLUTE_MIN_DC), cls.ABSOLUTE_MAX_DC), 3)
+
+    def __init__(self):
+        self.angle = None
 
 class Base(Revolute):
     MIN_ANGLE           = 15
@@ -227,16 +232,140 @@ class Elbow(Revolute):
     ZERO_POSITION_ANGLE = 90
     ZERO_POSITION_DC    = 1350
 
-# positions = [700, 1000, 1500, 2000, 2300, 2000, 1500, 1000, 700]
+class PrismaticJoint():
+    ENCODER_A  = 2
+    ENCODER_B  = 3
+    CPR        = 193
+    LENGTH     = 110
+    MOTOR_CW   = 25          # upwards
+    MOTOR_CCW  = 24          # downwards
+    P_CONTROL_MIN_DC = 35
+    P_CONTROL_MAX_DC = 45
 
-# try:
-#     for i in positions:
-#         print(f'{i}')
-#         pwm.set_servo_pulsewidth(elbow, i)
-#         # for j in positions:
-#         #     pwm.set_servo_pulsewidth(elbow, j)
-#         #     print(f'{i}, {j}')
-#         sleep(1)
+    def __init__():
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.ENCODER_A, GPIO.IN)
+        GPIO.setup(self.ENCODER_B, GPIO.IN)
+
+        GPIO.setup(self.MOTOR_CW, GPIO.OUT)
+        GPIO.setup(self.MOTOR_CCW, GPIO.OUT)
+        self.up_handler = GPIO.PWM(MOTOR_CW, 1000)
+        self.down_handler = GPIO.PWM(MOTOR_CCW, 1000)
+
+        self.dir         = 0        # UP(CW) = -1, DOWN(CCW) = 1, STOPPED = 0
+        self.count_A     = 0
+        self.count_B     = 0
+        self.rail_count  = 744
+        self.K_p         = 1
+        self.current_pos = 0
+
+        self.ignore_calls = 0
+        self.setup_encoder_isr()
+
+        self.up_handler.start(0)
+        self.down_handler.start(0)
+
+    def setup_encoder_isr():
+        GPIO.add_event_detect(self.ENCODER_A, GPIO.RISING, callback=self.pulse_A)
+        GPIO.add_event_detect(self.ENCODER_B, GPIO.RISING, callback=self.pulse_B)
+
+    def check_direction(self):
+        if GPIO.input(self.ENCODER_B) == True:
+            self.dir = -1 # moving upwards
+            print(f'dir: {self.dir}, upward', end='\r')
+        else:
+            self.dir = 1  # moving downwards
+            print(f'dir: {self.dir}, downward', end='\r')
+
+    def pulse(fcn):
+        if self.ignore_calls == 1: return 
+        self.ignore_calls = 1
+        return fcn()
+        ignore_calls = 0
+
+    @pulse
+    def pulse_A():
+        self.check_direction()
+        self.count_A += self.dir
+
+    @pulse
+    def pulse_B():
+        self.count_B += self.dir
+    
+    def gracefully_manipulate_gpio(fcn, **args):
+        try:
+            cleaned_up = False
+            fcn(args)
+        except KeyboardInterrupt:
+            self.up_handler.stop()
+            self.down_handler.stop()
+            GPIO.cleanup()
+            print("Keyboard interrupt triggered...GPIO cleanup complete.")
+            cleaned_up = True
+        finally:
+            if not cleaned_up:
+                self.up_handler.stop()
+                self.down_handler.stop()
+                GPIO.cleanup()
+                print("GPIO cleanup complete.")
+
+    def go_to(self, height_percent):
+        # 05 is the highest point, 100% is the lowest point
+
+
+
+    def __up(self, dc, duration):
+        self.up_handler.ChangeDutyCycle(dc)
+        self.down_handler.ChangeDutyCycle(0)
+        sleep(duration)
+
+    def __down(self, dc, duration):
+        self.down_handler.ChangeDutyCycle(dc)
+        self.up_handler.ChangeDutyCycle(0)
+        sleep(duration)
+
+    def __measure_rail_pulse_count(self):
+        initial_count_A, initial_count_B = self.count_A, self.count_B
+        self.up(80, 2)
+        final_count_A, final_count_B = self.count_A, self.count_B
+
+        retries = 0
+        if not isclose(final_count_A, final_count_B, 10):
+            if retries < 2:
+                self.__measure_rail_pulse_count()
+            else:
+                raise(Exception, 'rail measurement failed.')
+
+        self.rail_count  = final_count_A
+        self.current_pos = 0
+
+    def __p_control(self, target_pos):
+        error = target_pos - self.current_pos
+        self.count_A = current_pos
+        interval = 0.1
+
+        while not isclose(abs(error), 10):
+            dc = min(max(self.K_p * error, P_CONTROL_MIN_DC), P_CONTROL_MAX_DC)
+            self.down(dc, interval) if error > 0 else self.up(dc, interval)
+            
+            error = target_pos - self.count_A        
+            print(f'error: {error}, encoder_count: {self.count_A}')
+
+
+
+class Manipulator():
+    @staticmethod
+    def zero():
+        pass
+        # if starting at base > 90deg:
+            # drop rail height to 50%
+            # sweep to 30deg
+        # else
+            # sweep to 30deg
+        
+        # raise rail to 100% height
+        # sweep elbow to zero_position_angle
+        # sweep base to zero_position_angle
 
 try:
     # pass
