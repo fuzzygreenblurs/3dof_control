@@ -1,4 +1,6 @@
 import RPi.GPIO as GPIO
+from time import sleep
+from math import isclose
 
 class Prismatic():
     ENCODER_A  = 2
@@ -52,7 +54,7 @@ class Prismatic():
     #     ignore_calls = 0
 
     # @pulse
-    def pulse_A(self):
+    def pulse_A(self, _):
         if self.ignore_calls == 1: return 
         self.ignore_calls = 1
 
@@ -62,7 +64,7 @@ class Prismatic():
         ignore_calls = 0
 
     # @pulse
-    def pulse_B(self):
+    def pulse_B(self, _):
         if self.ignore_calls == 1: return 
         self.ignore_calls = 1
         
@@ -70,29 +72,29 @@ class Prismatic():
 
         ignore_calls = 0
     
-    def gracefully_manipulate_gpio(fcn, **args):
-        try:
-            cleaned_up = False
-            fcn(args)
-        except KeyboardInterrupt:
-            self.up_handler.stop()
-            self.down_handler.stop()
-            GPIO.cleanup()
-            print("Keyboard interrupt triggered...GPIO cleanup complete.")
-            cleaned_up = True
-        finally:
-            if not cleaned_up:
-                self.up_handler.stop()
-                self.down_handler.stop()
-                GPIO.cleanup()
-                print("GPIO cleanup complete.")
+    # def gracefully_manipulate_gpio(fcn, **args):
+    #     try:
+    #         cleaned_up = False
+    #         fcn(args)
+    #     except KeyboardInterrupt:
+    #         self.up_handler.stop()
+    #         self.down_handler.stop()
+    #         GPIO.cleanup()
+    #         print("Keyboard interrupt triggered...GPIO cleanup complete.")
+    #         cleaned_up = True
+    #     finally:
+    #         if not cleaned_up:
+    #             self.up_handler.stop()
+    #             self.down_handler.stop()
+    #             GPIO.cleanup()
+    #             print("GPIO cleanup complete.")
 
     def top(self):
         self.__up(40, 2)
 
     def middle(self):
         self.top()
-        p_control(int(0.5 * self.rail_count))
+        self.__p_control(int(0.5 * self.rail_count))
 
     def bottom(self):
         self.__down(40, 2)
@@ -118,7 +120,7 @@ class Prismatic():
         final_count_A, final_count_B = self.count_A, self.count_B
 
         retries = 0
-        if not math.isclose(final_count_A, final_count_B, 10):
+        if not isclose(final_count_A, final_count_B, 10):
             if retries < 2:
                 self.__measure_rail_pulse_count()
                 retries += 1
@@ -130,12 +132,12 @@ class Prismatic():
 
     def __p_control(self, target_pos):
         error = target_pos - self.current_pos
-        self.count_A = current_pos
+        self.count_A = self.current_pos
         interval = 0.1
 
-        while not math.isclose(abs(error), 10):
-            dc = min(max(self.K_p * error, P_CONTROL_MIN_DC), P_CONTROL_MAX_DC)
-            self.down(dc, interval) if error > 0 else self.up(dc, interval)
+        while not isclose(abs(error), 10):
+            dc = min(max(self.K_p * error, self.P_CONTROL_MIN_DC), self.P_CONTROL_MAX_DC)
+            self.__down(dc, interval) if error > 0 else self.up(dc, interval)
             
             error = target_pos - self.count_A        
             print(f'error: {error}, encoder_count: {self.count_A}')
