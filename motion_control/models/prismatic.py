@@ -61,7 +61,7 @@ class Prismatic():
         self.check_direction()
         self.count_A += self.dir
 
-        ignore_calls = 0
+        self.ignore_calls = 0
 
     # @pulse
     def pulse_B(self, _):
@@ -70,7 +70,7 @@ class Prismatic():
         
         self.count_B += self.dir
 
-        ignore_calls = 0
+        self.ignore_calls = 0
     
     # def gracefully_manipulate_gpio(fcn, **args):
     #     try:
