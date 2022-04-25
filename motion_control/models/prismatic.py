@@ -42,10 +42,8 @@ class Prismatic():
     def check_direction(self):
         if GPIO.input(self.ENCODER_B) == True:
             self.dir = -1 # moving upwards
-            print(f'dir: {self.dir}, upward', end='\r')
         else:
             self.dir = 1  # moving downwards
-            print(f'dir: {self.dir}, downward', end='\r')
 
     # def pulse(self, fcn):
     #     if self.ignore_calls == 1: return 
@@ -91,13 +89,14 @@ class Prismatic():
 
     def top(self):
         self.__up(40, 2)
+        self.count_A = 0
+        self.count_B = 0
 
     def middle(self):
-        self.top()
-        self.__p_control(int(0.5 * self.rail_count))
+        self.__p_control(int(0.3 * self.rail_count))
 
     def bottom(self):
-        self.__down(40, 2)
+        self.__p_control(int(0.6 * self.rail_count))
 
     def halt(self, duration=3):
         self.__up(0)
@@ -135,9 +134,16 @@ class Prismatic():
         self.count_A = self.current_pos
         interval = 0.1
 
-        while not isclose(abs(error), 10):
+        while abs(error) > 10:
             dc = min(max(self.K_p * error, self.P_CONTROL_MIN_DC), self.P_CONTROL_MAX_DC)
-            self.__down(dc, interval) if error > 0 else self.up(dc, interval)
+            if error > 0:
+                self.__down(dc, interval)
+            elif error < 0:
+                self.__up(dc, interval)
             
-            error = target_pos - self.count_A        
-            print(f'error: {error}, encoder_count: {self.count_A}')
+            error = target_pos - self.count_A
+            print(f'error: {error}, count_A: {self.count_A}')
+
+        
+        # self.current_pos = self.count_A
+        sleep(1)

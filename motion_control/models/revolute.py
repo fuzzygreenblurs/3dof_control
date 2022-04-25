@@ -1,6 +1,7 @@
 import RPi.GPIO as GPIO
 import pigpio
 import warnings
+from time import sleep
 
 class Revolute():
     # signal bounds to avoid damaging HW
@@ -15,6 +16,7 @@ class Revolute():
         
         slope = (cls.MAX_ANGLE_DC - cls.MIN_ANGLE_DC)/(cls.MAX_ANGLE - cls.MIN_ANGLE)
         dc = slope*(max(angle, cls.MIN_ANGLE)) + cls.MIN_ANGLE_DC
+        # print(f'angle: {angle}, slope: {slope}, dc: {dc}')
         
         return round(min(max(dc, cls.ABSOLUTE_MIN_DC), cls.ABSOLUTE_MAX_DC), 3)
 
@@ -25,4 +27,4 @@ class Revolute():
 
     def go_to(self, angle):
         self.pwm.set_servo_pulsewidth(self.PIN, self.converted_dc(angle))
-        sleep(2)
+        sleep(1)
