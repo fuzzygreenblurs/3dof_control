@@ -1,8 +1,7 @@
 # ####### RACK POSITIONER ############
 import RPi.GPIO as GPIO          
 from time import sleep
-from math import isclose
-
+import math
 # GPIO.setmode(GPIO.BCM)
 
 # ENCODER_A = 2
@@ -213,10 +212,17 @@ class Revolute():
         
         return round(min(max(dc, cls.ABSOLUTE_MIN_DC), cls.ABSOLUTE_MAX_DC), 3)
 
-    def __init__(self):
+    def __init__(self, pwm):
         self.angle = None
+        self.pwm = pwm
+        self.pwm.set_mode(self.PIN, pigpio.OUTPUT)
+
+    def go_to(self, angle):
+        self.pwm.set_servo_pulsewidth(self.PIN, self.converted_dc(angle))
+        sleep(2)
 
 class Base(Revolute):
+    PIN                 = 18
     MIN_ANGLE           = 15
     MAX_ANGLE           = 180
     MIN_ANGLE_DC        = 500
@@ -225,6 +231,7 @@ class Base(Revolute):
     ZERO_POSITION_DC    = 600
 
 class Elbow(Revolute):
+    PIN                 = 19
     MIN_ANGLE           = 0
     MAX_ANGLE           = 180
     MIN_ANGLE_DC        = 500
@@ -232,7 +239,7 @@ class Elbow(Revolute):
     ZERO_POSITION_ANGLE = 90
     ZERO_POSITION_DC    = 1350
 
-class PrismaticJoint():
+class Prismatic():
     ENCODER_A  = 2
     ENCODER_B  = 3
     CPR        = 193
@@ -340,7 +347,7 @@ class PrismaticJoint():
         final_count_A, final_count_B = self.count_A, self.count_B
 
         retries = 0
-        if not isclose(final_count_A, final_count_B, 10):
+        if not math.isclose(final_count_A, final_count_B, 10):
             if retries < 2:
                 self.__measure_rail_pulse_count()
                 retries += 1
@@ -355,39 +362,115 @@ class PrismaticJoint():
         self.count_A = current_pos
         interval = 0.1
 
-        while not isclose(abs(error), 10):
+        while not math.isclose(abs(error), 10):
             dc = min(max(self.K_p * error, P_CONTROL_MIN_DC), P_CONTROL_MAX_DC)
             self.down(dc, interval) if error > 0 else self.up(dc, interval)
             
             error = target_pos - self.count_A        
             print(f'error: {error}, encoder_count: {self.count_A}')
 
+class Coil():
+    def __init__(self):
+        self.pin = 21
+        GPIO.setup(21, GPIO.OUT)
+
+    def engage():
+        GPIO.output(self.pin, 1)
+
+    def disengage():
+        GPIO.output(self.pin, 0)
+
 class Manipulator():
-    @staticmethod
+    BASE_PIN  = 18
+    ELBOW_PIN = 19
+
+    A_1 = 1
+    A_2 = 1
+    A_3 = 1
+    A_4 = 1
+    A_5 = 1
+
+    def __init__(self):
+        pwm = pigpio.pi()
+
+        self.base = Base(pwm)
+        self.elbow = Elbow(pwm)
+        self.prismatic = PrismaticJoint()
+        self.coil = Coil()
+
     def zero():
-        pass
-        # if starting at base > 90deg:
-            # drop rail height to 50%
-            # sweep to 30deg
-        # else
-            # sweep to 30deg
+        self.prismatic.middle()
+        self.base.go_to(30)
+        self.elbow.go_to(self.elbow.ZERO_POSITION_ANGLE)
+        self.prismatic.top()
+        self.base.go_to(self.base.ZERO_POSITION_ANGLE)
+
+    def go_to(X=0, Y=0):
+        if X == 0 and Y == 0:
+            return self.zero()
+
+        R_1 = math.sqrt((X**2) + (Y**2))
+
+        self.prismatic.middle()
+        self.base.go_to(base_angle(X, Y, R_1))
+        self.elbow.go_to(elbow_angle(X, Y, R_1))
+
+    def pick_and_place(X, Y):
+        self.go_to(X, Y)
         
-        # raise rail to 100% height
-        # sweep elbow to zero_position_angle
-        # sweep base to zero_position_angle
+        self.coil.engage()
+        self.prismatic.down()
 
-try:
-    # pass
-    # start at zero position - 
-    print('base ~15deg - 600, ~180deg - 2400')
-    print('elbow - 90deg - 1350, 0deg - 500, 180deg - 2400' )
-    # pwm.set_servo_pulsewidth(elbow, 2400)
-    # sleep(1)
+        self.zero()
+        self.coil.disengage()
 
-    # pwm.set_servo_pulsewidth(elbow, 2400)    
-    # sleep(2)
+    # inverse kinematics
+    def __base_angle(X, Y, R_1):
+        p = math.atan(Y/X)
+        q = ((self.A_4**2) - (self.A_2**2) - (R_1**2))/(2*(self.A_2)*R_1)
+        return math.atan(p) - math.acos(q)
 
-    print(Base.converted_dc(200))
+    def __elbow_angle(X, Y, R_1):
+        n = ((self.A_2**2) + (self.A_4**2) - (R_1**2))
+        d = (2 * (A_2) * (A_4))
+        return 180 - acos(n/d)
+
+if __name__ == '__main__':
+    try:
+        cleaned_up = False
+        manipulator = Manipulator()
+
+        # read coordinates
+
+
+
+    except KeyboardInterrupt:
+        self.up_handler.stop()
+        self.down_handler.stop()
+        GPIO.cleanup()
+        print("Keyboard interrupt triggered...GPIO cleanup complete.")
+        cleaned_up = True
+    finally:
+        if not cleaned_up:
+            self.up_handler.stop()
+            self.down_handler.stop()
+            GPIO.cleanup()
+            print("GPIO cleanup complete.")
+
+
+
+# try:
+#     # pass
+#     # start at zero position - 
+#     print('base ~15deg - 600, ~180deg - 2400')
+#     print('elbow - 90deg - 1350, 0deg - 500, 180deg - 2400' )
+#     # pwm.set_servo_pulsewidth(elbow, 2400)
+#     # sleep(1)
+
+#     # pwm.set_servo_pulsewidth(elbow, 2400)    
+#     # sleep(2)
+
+#     print(Base.converted_dc(200))
 
     # pwm.set_servo_pulsewidth(elbow, 1350)    
     # sleep(2)
@@ -412,19 +495,3 @@ try:
     # end effector to z = 0
     # end effector to height = 50%
     # 
-
-except KeyboardInterrupt:
-    # turning off servo
-    pwm.set_PWM_dutycycle(base, 0)
-    pwm.set_PWM_frequency(base, 0 )
-    # pwm.set_PWM_dutycycle(elbow, 0)
-    # pwm.set_PWM_frequency(elbow, 0 )
-    GPIO.cleanup()
-    print("GPIO cleanup complete.")
-finally:
-    pwm.set_PWM_dutycycle(base, 0)
-    pwm.set_PWM_frequency(base, 0)
-    pwm.set_PWM_dutycycle(elbow, 0)
-    pwm.set_PWM_frequency(elbow, 0)
-    GPIO.cleanup()
-    print("GPIO cleanup complete.")
