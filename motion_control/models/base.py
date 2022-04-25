@@ -1,6 +1,7 @@
 from revolute import Revolute
 
 class Base(Revolute):
+    PIN                 = 18
     MIN_ANGLE           = 15
     MAX_ANGLE           = 180
     MIN_ANGLE_DC        = 500
